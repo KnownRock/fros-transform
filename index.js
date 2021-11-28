@@ -1,9 +1,11 @@
-import babel from '@babel/core'
-import sha256 from 'fast-sha256'
-import generate from "babel-generator"
-import globals from 'globals'
-import t from 'babel-types'
+const babel = require('@babel/core');
 
+const { default: sha256 } = require('fast-sha256');
+const { default: generate } = require("babel-generator");
+
+const globals = require('globals');
+
+const t = require('babel-types');
 
 const packageName = 'fros'
 
@@ -139,9 +141,7 @@ const getServerCodeMeta = (code, { }) => {
     serverDependencies
   }
 
+}
 
 
-}
-export default {
-  getServerCodeMeta
-}
+module.exports.getServerCodeMeta = getServerCodeMeta
