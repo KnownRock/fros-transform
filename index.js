@@ -94,9 +94,35 @@ const transform = (code, cb) => {
   return result.code
 }
 
+const getClientCode = (code) => {
+  const result = transform(code, (path, {
+    fucs,
+    dependencies,
+    outerVariables,
+    dependenciesPathToPackageName,
+    hash
+  }) => {
+    path.node.arguments[0] = t.stringLiteral(hash)
+    path.node.arguments[1] = t.objectExpression(
+      outerVariables
+        // filter all variables which is imported
+        // .filter(d=>!dependenciesPathToPackageName[d])
 
+        .map(d => t.objectProperty(t.identifier(d), t.identifier(d)))
+    )
 
-const getServerCodeMeta = (code, { }) => {
+    console.log(fucs);
+    console.log(dependencies);
+    console.log(outerVariables);
+    console.log(dependenciesPathToPackageName);
+  })
+
+  return result
+}
+
+const getServerCodeMeta = (code, {
+  calleeName = 'frosServer'
+} = {}) => {
   const serverCodes = []
   let serverDependencies = {}
 
@@ -109,18 +135,30 @@ const getServerCodeMeta = (code, { }) => {
   }) => {
     console.log(dependencies);
 
-    path.node.callee.name = 'fros.server'
+    path.node.callee.name = calleeName
     path.node.arguments[1] = path.node.arguments[0]
     path.node.arguments[0] = t.stringLiteral(hash)
 
-    path.node.arguments[1].params = path.node.arguments[1].params.concat(
-      t.Identifier('req')
-    )
+    // path.node.arguments[1].params = path.node.arguments[1].params.concat(
+    //   t.Identifier('req')
+    // )
+
+    let contextName = '__fros__context'
+    const contextReqName = 'frosReq'
+    const reqName = '__fros__req'
+    if (path.node.arguments[1].params[0]?.name) {
+      contextName = path.node.arguments[1].params[0].name
+    }else{
+      path.node.arguments[1].params[0] = t.identifier(contextName)
+    }
+
 
     outerVariables.length && path.node.arguments[1].body.body.unshift(
       t.variableDeclaration('const',
-        outerVariables.map(ov =>
-          t.variableDeclarator(t.identifier(ov), t.identifier(`req.${ov}`))
+        [t.variableDeclarator(t.identifier(reqName), t.identifier(`${contextName}.${reqName}`))].concat(
+          outerVariables.map(ov =>
+            t.variableDeclarator(t.identifier(ov), t.identifier(`${reqName}.${ov}`))
+          )
         )
       )
     )
@@ -138,10 +176,11 @@ const getServerCodeMeta = (code, { }) => {
 
   return {
     serverCodes,
-    serverDependencies
+    serverDependencies: Object.keys(serverDependencies)
   }
 
 }
 
 
 module.exports.getServerCodeMeta = getServerCodeMeta
+module.exports.getClientCode = getClientCode
