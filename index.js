@@ -39,9 +39,9 @@ const transform = (code, cb) => {
       // in the target function, collect all variables
       if (path.node.callee.name == fucName) {
         let execArg
-        if( path.node.arguments.length == 1){
+        if (path.node.arguments.length == 1) {
           execArg = path.node.arguments[0]
-        }else{
+        } else {
           execArg = path.node.arguments[1]
         }
 
@@ -65,7 +65,6 @@ const transform = (code, cb) => {
               const p3 = path
               path.traverse({
                 Identifier(path) {
-                  // FIXME: should handle spread expression 
                   if (globals.node.hasOwnProperty(path.node.name)) return
 
                   if (!p3.scope.hasOwnBinding(path.node.name) && path.key !== 'property') {
@@ -115,7 +114,7 @@ const getClientCode = (code, {
     dependenciesPathToPackageName,
     hash
   }) => {
-    
+
     if (path.node.arguments.length == 2) {
 
 
@@ -134,23 +133,22 @@ const getClientCode = (code, {
         .map(d => t.objectProperty(t.identifier(d), t.identifier(d)))
     )
 
-    path.node.arguments[0].properties.forEach((prop,index) =>{
-      if(prop.key.type == 'Identifier' && prop.key.name == 'url'){
-        if(prop.value.type == 'StringLiteral'){
-          const templateElementStrings = prop.value.value.match(/(^[^\[]+)|(?<=\])[^\[]+/g)
-          const ExpressionStrings =  prop.value.value.match(/(?<=\[)([^\]]+)(?<!\])/g)
-          if(templateElementStrings.length == ExpressionStrings.length ){
-            templateElementStrings.push('')
-          }
+    // path.node.arguments[0].properties.forEach((prop,index) =>{
+    //   if(prop.key.type == 'Identifier' && prop.key.name == 'url'){
+    //     if(prop.value.type == 'StringLiteral'){
+    //       const templateElementStrings = prop.value.value.match(/(^[^\[]+)|(?<=\])[^\[]+/g)
+    //       const ExpressionStrings =  prop.value.value.match(/(?<=\[)([^\]]+)(?<!\])/g)
+    //       if(templateElementStrings.length == ExpressionStrings.length ){
+    //         templateElementStrings.push('')
+    //       }
+    //       prop.value = t.templateLiteral(
+    //         templateElementStrings.map(el=>t.templateElement({raw: el})),
+    //         ExpressionStrings.map(el=>t.identifier(el))
+    //       )
 
-          prop.value = t.templateLiteral(
-            templateElementStrings.map(el=>t.templateElement({raw: el})),
-            ExpressionStrings.map(el=>t.identifier(el))
-          )
-
-        }  
-      }
-    })
+    //     }  
+    //   }
+    // })
 
 
     // console.log(fucs);
@@ -183,6 +181,10 @@ const getServerCodeMeta = (code, {
     hash
   }) => {
     console.log(dependencies);
+    let requestVariables = [...outerVariables]
+    let routerVariables = []
+    let paramsVariableZips = []
+    let __params = []
 
     path.node.callee.name = calleeName
     if (path.node.arguments.length == 2) {
@@ -193,15 +195,104 @@ const getServerCodeMeta = (code, {
       path.node.arguments[0] = t.ObjectExpression(
         Object.entries(props).map(el => t.objectProperty(t.identifier(el[0]), t.stringLiteral(el[1])))
       )
-
     }
+
+    path.node.arguments[0].properties.forEach((prop, index) => {
+      if (prop.key.type == 'Identifier' && prop.key.name == 'url') {
+        // debugger
+        if (prop.value.type == 'TemplateLiteral') {
+          let hadFinished = false
+          const strs = prop.value.quasis.map(
+            (el, index) => {
+              // clear params variables string
+
+              if(index==0 && !el.value.raw.match(/([^\?]+)\?/) && !el.value.raw.match(/\/$/)){
+                throw new SyntaxError('need a full router param. like /api/post/aaaa${pid} can cause it.')
+              }
+              if(index>0 && !hadFinished){
+                if(!el.value.raw.match(/^\//)){
+                  throw new SyntaxError('need a full router param. like /api/post/${pid}axxxx/foo/bar can cause it.')
+                }
+              }
+
+              // detect params starting
+              if (el.value.raw.match(/([^\?]+)\?/) || hadFinished) {
+                if (prop.value.expressions[index]) {
+                  if(t.isIdentifier(prop.value.expressions[index])){
+                    requestVariables = requestVariables.filter(d => d != prop.value.expressions[index].name)
+                    paramsVariableZips.push([el.value.raw.match(/(?<=\?|&)[^=]+/)[0], prop.value.expressions[index].name])
+                  }
+                  __params.push(el.value.raw.match(/(?<=\?|&)[^=]+/)[0])
+                }
+                if (hadFinished) {
+
+                  return ''
+                }
+
+                
+
+
+                hadFinished = true
+                return el.value.raw.match(/([^\?]+)\?/)[1]
+              }
+              if(prop.value.expressions[index]){
+                if(t.isIdentifier(prop.value.expressions[index])){
+                  routerVariables.push(prop.value.expressions[index].name)
+                  requestVariables = requestVariables.filter(d => d != prop.value.expressions[index].name)
+                  return el.value.raw + ':' + prop.value.expressions[index].name
+                }
+                throw new EvalError('router argument should be a identifier')
+                
+                
+              }else{
+                return el.value.raw
+              }
+              
+             
+            }
+          )
+          prop.value = t.stringLiteral(strs.join(''))
+        }
+        //   const templateElementStrings = prop.value.value.match(/(^[^\[]+)|(?<=\])[^\[]+/g)
+        //   const ExpressionStrings = prop.value.value.match(/(?<=\[)([^\]]+)(?<!\])/g)
+        //   if (templateElementStrings.length == ExpressionStrings.length) {
+        //     templateElementStrings.push('')
+        //   }
+        //   prop.value = t.templateLiteral(
+        //     templateElementStrings.map(el => t.templateElement({ raw: el })),
+        //     ExpressionStrings.map(el => t.identifier(el))
+        //   )
+
+        // }
+      }
+    })
+
+    // path.node.arguments[0].properties.push(
+
+
+    // path.node.arguments[0].properties.push(
+    //   t.objectProperty(t.identifier('__params'), t.objectExpression(
+    //     paramsVariableZips.map(
+    //       el => t.objectProperty(t.identifier(el[0]), t.stringLiteral(el[1]))
+    //     )
+    //   )
+    //   )
+    // )
+    path.node.arguments[0].properties.push(
+      t.objectProperty(t.identifier('__params'), t.arrayExpression(
+        __params.map(
+          el => t.stringLiteral(el)
+        )
+      )
+      )
+    )
+
 
     // path.node.arguments[1].params = path.node.arguments[1].params.concat(
     //   t.Identifier('req')
     // )
 
     let contextName = '__fros__context'
-    // const contextReqName = 'frosReq'
     const reqName = '__fros__req'
     if (path.node.arguments[1].params[0]?.name) {
       contextName = path.node.arguments[1].params[0].name
@@ -210,15 +301,39 @@ const getServerCodeMeta = (code, {
     }
 
 
-    outerVariables.length && path.node.arguments[1].body.body.unshift(
+    requestVariables.length && path.node.arguments[1].body.body.unshift(
       t.variableDeclaration('const',
         [t.variableDeclarator(t.identifier(reqName), t.identifier(`${contextName}.${reqName}`))].concat(
-          outerVariables.map(ov =>
+          requestVariables.map(ov =>
             t.variableDeclarator(t.identifier(ov), t.identifier(`${reqName}.${ov}`))
           )
         )
       )
     )
+    const parName = '__fros__par'
+    paramsVariableZips.length && path.node.arguments[1].body.body.unshift(
+      t.variableDeclaration('const',
+        [t.variableDeclarator(t.identifier(parName), t.identifier(`${contextName}.${parName}`))].concat(
+          paramsVariableZips.map(([vp,vr]) =>
+            t.variableDeclarator(t.identifier(vr), t.identifier(`${parName}.${vp}`))
+          )
+        )
+      )
+    )
+    const routerName = '__fros__rt__par'
+    routerVariables.length && path.node.arguments[1].body.body.unshift(
+      t.variableDeclaration('const',
+        [t.variableDeclarator(t.identifier(routerName), t.identifier(`${contextName}.${routerName}`))].concat(
+          routerVariables.map((ov) =>
+            t.variableDeclarator(t.identifier(ov), t.identifier(`${routerName}.${ov}`))
+          )
+        )
+      )
+    )
+
+
+
+
     serverDependencies = {
       ...serverDependencies,
       ...dependencies.reduce((acc, name) => {
