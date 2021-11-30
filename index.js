@@ -38,14 +38,20 @@ const transform = (code, cb) => {
     CallExpression(path) {
       // in the target function, collect all variables
       if (path.node.callee.name == fucName) {
-        const fucBody = generate(path.node.arguments[0]).code;
+        let execArg
+        if( path.node.arguments.length == 1){
+          execArg = path.node.arguments[0]
+        }else{
+          execArg = path.node.arguments[1]
+        }
+
+        const fucBody = generate(execArg).code;
         const hash = Buffer.from(sha256(fucBody)).toString('hex');
         fucs[hash] = fucBody
 
-        const p2 = path
         path.traverse({
           FunctionExpression(path) {
-            if (path.node === p2.node.arguments[0]) {
+            if (path.node === execArg) {
               // collect all dependencies in server side code
               path.traverse({
                 CallExpression(path) {
@@ -94,7 +100,14 @@ const transform = (code, cb) => {
   return result.code
 }
 
-const getClientCode = (code) => {
+
+
+const getClientCode = (code, {
+  getDeafultRequest = (hash) => ({
+    url: `/api/gen/${hash}`,
+    type: 'POST'
+  })
+} = {}) => {
   const result = transform(code, (path, {
     fucs,
     dependencies,
@@ -102,7 +115,17 @@ const getClientCode = (code) => {
     dependenciesPathToPackageName,
     hash
   }) => {
-    path.node.arguments[0] = t.stringLiteral(hash)
+    
+    if (path.node.arguments.length == 2) {
+
+
+    } else {
+      const props = getDeafultRequest(hash)
+      // generate a default url object
+      path.node.arguments[0] = t.ObjectExpression(
+        Object.entries(props).map(el => t.objectProperty(t.identifier(el[0]), t.stringLiteral(el[1])))
+      )
+    }
     path.node.arguments[1] = t.objectExpression(
       outerVariables
         // filter all variables which is imported
@@ -111,17 +134,43 @@ const getClientCode = (code) => {
         .map(d => t.objectProperty(t.identifier(d), t.identifier(d)))
     )
 
-    console.log(fucs);
-    console.log(dependencies);
-    console.log(outerVariables);
-    console.log(dependenciesPathToPackageName);
+    path.node.arguments[0].properties.forEach((prop,index) =>{
+      if(prop.key.type == 'Identifier' && prop.key.name == 'url'){
+        if(prop.value.type == 'StringLiteral'){
+          const templateElementStrings = prop.value.value.match(/(^[^\[]+)|(?<=\])[^\[]+/g)
+          const ExpressionStrings =  prop.value.value.match(/(?<=\[)([^\]]+)(?<!\])/g)
+          if(templateElementStrings.length == ExpressionStrings.length ){
+            templateElementStrings.push('')
+          }
+
+          prop.value = t.templateLiteral(
+            templateElementStrings.map(el=>t.templateElement({raw: el})),
+            ExpressionStrings.map(el=>t.identifier(el))
+          )
+
+        }  
+      }
+    })
+
+
+    // console.log(fucs);
+    // console.log(dependencies);
+    // console.log(outerVariables);
+    // console.log(dependenciesPathToPackageName);
   })
 
   return result
 }
 
+
+
+
 const getServerCodeMeta = (code, {
-  calleeName = 'frosServer'
+  calleeName = 'frosServer',
+  getDeafultRequest = (hash) => ({
+    url: `/api/gen/${hash}`,
+    type: 'POST'
+  }),
 } = {}) => {
   const serverCodes = []
   let serverDependencies = {}
@@ -136,19 +185,27 @@ const getServerCodeMeta = (code, {
     console.log(dependencies);
 
     path.node.callee.name = calleeName
-    path.node.arguments[1] = path.node.arguments[0]
-    path.node.arguments[0] = t.stringLiteral(hash)
+    if (path.node.arguments.length == 2) {
+    } else {
+      path.node.arguments[1] = path.node.arguments[0]
+      const props = getDeafultRequest(hash)
+      // generate a default url object
+      path.node.arguments[0] = t.ObjectExpression(
+        Object.entries(props).map(el => t.objectProperty(t.identifier(el[0]), t.stringLiteral(el[1])))
+      )
+
+    }
 
     // path.node.arguments[1].params = path.node.arguments[1].params.concat(
     //   t.Identifier('req')
     // )
 
     let contextName = '__fros__context'
-    const contextReqName = 'frosReq'
+    // const contextReqName = 'frosReq'
     const reqName = '__fros__req'
     if (path.node.arguments[1].params[0]?.name) {
       contextName = path.node.arguments[1].params[0].name
-    }else{
+    } else {
       path.node.arguments[1].params[0] = t.identifier(contextName)
     }
 

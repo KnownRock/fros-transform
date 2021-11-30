@@ -8,10 +8,20 @@ const fs = require('fs');
 const code = 
 `
 import fros from 'fros'
-fros(async function(){
+const x = 1
+fros({
+  type:'POST',
+  url:\`/api/post/[id]/comments?id=[cid]&time=\${time}\`,
+},async function(){
   return '123' + x
 })
 `
+// `
+// import fros from 'fros'
+// fros(async function(){
+//   return '123' + x
+// })
+// `
 const meta = getServerCodeMeta(code, {
   calleeName: 'frosServer'
 }) 
@@ -21,4 +31,4 @@ fs.writeFileSync(
   meta.serverCodes.join('\n\n'),
   'utf8')
 
-console.log(getClientCode(code));
+fs.writeFileSync('x.js',getClientCode(code));
