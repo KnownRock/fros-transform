@@ -1,10 +1,11 @@
 {
   "name": "fros-transform",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "A framwork let you write backend in your frontend project.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "public":"npm publish --access public"
   },
   "repository": {
     "type": "git",
